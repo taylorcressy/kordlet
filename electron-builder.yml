@@ -1,0 +1,21 @@
+appId: dev.kordlet.desktop
+productName: Kordlet
+directories:
+  output: release
+files:
+  - dist/desktop.mjs
+  - dist/utility.cjs
+  - dist/web/**/*
+  - package.json
+asarUnpack:
+  - '**/*.node'
+npmRebuild: true
+linux:
+  target: AppImage
+  category: Development
+mac:
+  target:
+    - dmg
+    - zip
+win:
+  target: nsis

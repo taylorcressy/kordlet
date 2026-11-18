@@ -1,0 +1,22 @@
+name: Bug report
+description: Report unexpected behavior in Kordlet
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Kordlet version and interface
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: OS, architecture and Node or Electron version
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction and expected behavior
+      description: Remove credentials and private workspace details.
+    validations:
+      required: true

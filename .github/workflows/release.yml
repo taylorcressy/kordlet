@@ -1,0 +1,49 @@
+name: Build release candidates
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: x64
+            executable: release/linux-unpacked/kordlet
+          - os: windows-2025
+            arch: x64
+            executable: release/win-unpacked/Kordlet.exe
+          - os: macos-15
+            arch: arm64
+            executable: release/mac-arm64/Kordlet.app/Contents/MacOS/Kordlet
+          - os: macos-15-intel
+            arch: x64
+            executable: release/mac/Kordlet.app/Contents/MacOS/Kordlet
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+      - run: npm install --global pnpm@10.32.1
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm test
+      - run: pnpm package:desktop --${{ matrix.arch }}
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      - if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum pnpm test:desktop "${{ matrix.executable }}"
+      - if: runner.os != 'Linux'
+        run: pnpm test:desktop "${{ matrix.executable }}"
+      - run: pnpm package:node
+      - run: pnpm test:node-package
+      - run: node scripts/release-files.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: kordlet-${{ matrix.os }}-${{ matrix.arch }}
+          path: release/distribution/
+          if-no-files-found: error

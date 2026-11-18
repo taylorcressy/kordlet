@@ -1,0 +1,5 @@
+{
+  "name": "@kordlet/cli",
+  "private": true,
+  "type": "module"
+}

@@ -1,0 +1,65 @@
+{
+  "name": "kordlet",
+  "version": "0.1.0",
+  "description": "Local issue tracking for developers and coding agents.",
+  "main": "dist/desktop.mjs",
+  "scripts": {
+    "dev:web": "node scripts/build.mjs web && node dist/server.mjs",
+    "dev:desktop": "node scripts/desktop.mjs dev",
+    "build:web": "node scripts/build.mjs web",
+    "build:desktop": "node scripts/build.mjs desktop",
+    "build:cli": "node scripts/build.mjs cli",
+    "build:mcp": "node scripts/build.mjs mcp",
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "node scripts/lint.mjs",
+    "test": "node scripts/build.mjs cli && vitest run tests/conformance.test.ts",
+    "test:conformance": "node scripts/build.mjs cli && vitest run tests/conformance.test.ts",
+    "test:e2e": "node scripts/build.mjs web && playwright test",
+    "generate": "node scripts/generate.mjs",
+    "check:generated": "node scripts/generate.mjs --check",
+    "verify": "pnpm lint && pnpm typecheck && pnpm check:generated && pnpm build && pnpm test && pnpm test:e2e",
+    "package:desktop": "node scripts/desktop.mjs package",
+    "test:desktop": "node scripts/smoke-desktop.mjs",
+    "package:node": "node scripts/package-node.mjs",
+    "test:node-package": "node scripts/smoke-node.mjs"
+  },
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "packageManager": "pnpm@10.32.1",
+  "private": true,
+  "dependencies": {
+    "@fastify/static": "10.1.11",
+    "@fontsource-variable/inter": "5.3.0",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@sinclair/typebox": "0.34.52",
+    "ajv": "8.20.0",
+    "better-sqlite3": "13.2.0",
+    "fastify": "5.12.8",
+    "lucide-react": "1.75.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-markdown": "10.1.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1",
+    "@scalar/openapi-parser": "0.29.25",
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "electron": "45.3.4",
+    "electron-builder": "26.18.0",
+    "esbuild": "0.28.2",
+    "tar": "7.5.23",
+    "typescript": "7.0.2",
+    "vite": "8.3.8",
+    "vitest": "5.1.1"
+  },
+  "bin": {
+    "kordlet": "dist/kordlet.mjs"
+  }
+}
