@@ -148,3 +148,58 @@ test("stream reconnect refreshes the board after an offline change", async ({
     page.getByRole("button", { name: /Created while browser was offline/ }),
   ).toBeVisible({ timeout: 15000 });
 });
+
+test("Workspace agent project and issue changes refresh the workspace without a reload", async ({ page }) => {
+  await page.goto(url);
+  await expect(page.getByRole("heading", { name: "Create your first project" })).toBeVisible();
+  const agent = apiClient(
+    new URL(url).origin,
+    readFileSync(join(dir, "profile-workspace-agent.token"), "utf8"),
+  );
+  const first = await agent("project.create", { name: "Agent project", prefix: "AGENT" });
+  await agent("issue.create", { projectId: first.id, title: "Agent's first issue" });
+  await expect(page.getByRole("button", { name: /Agent's first issue/ })).toBeVisible();
+
+  const second = await agent("project.create", { name: "Another agent project", prefix: "OTHER" });
+  await expect(page.getByLabel("Project", { exact: true })).toHaveValue(first.id);
+  await expect(page.getByRole("option", { name: "Another agent project" })).toHaveCount(1);
+  await agent("issue.create", { projectId: first.id, title: "Agent follow-up issue" });
+  await expect(page.getByRole("button", { name: /Agent follow-up issue/ })).toBeVisible();
+  await page.getByLabel("Project", { exact: true }).selectOption(second.id);
+  await expect(page.getByRole("button", { name: /Agent follow-up issue/ })).toHaveCount(0);
+});
+
+test("project deletion requires an owner UI session and removes related data", async ({ page, request }) => {
+  const endpoint = new URL(url).origin;
+  const ownerToken = readFileSync(join(dir, "owner.token"), "utf8");
+  const owner = apiClient(endpoint, ownerToken);
+  const keep = await owner("project.create", { name: "Keep this project", prefix: "KEEP" });
+  const target = await owner("project.create", { name: "Delete this project", prefix: "DEL" });
+  const first = await owner("issue.create", { projectId: target.id, title: "First issue" });
+  const second = await owner("issue.create", { projectId: target.id, title: "Second issue" });
+  await owner("dependency.add", { issueId: second.id, requiresId: first.id });
+  const { token } = await owner("credential.create", { projectId: target.id, kind: "agent" });
+  const deletion = "/session/projects/" + target.id + "/delete";
+  const bearer = await request.post(endpoint + deletion, {
+    headers: { Authorization: "Bearer " + ownerToken, Origin: endpoint },
+    data: { expectedRevision: target.revision, confirmation: target.name },
+  });
+  expect(bearer.status()).toBe(403);
+
+  await page.goto(url);
+  await page.getByLabel("Project", { exact: true }).selectOption(target.id);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "Edit Delete this project" }).click();
+  await page.getByRole("button", { name: "Delete project…" }).click();
+  await page.getByLabel("Type the project name").fill("Wrong name");
+  await page.getByRole("button", { name: "Permanently delete" }).click();
+  await expect(page.getByRole("dialog").getByRole("alert")).toContainText("exact project name");
+  await page.getByLabel("Type the project name").fill(target.name);
+  await page.getByRole("button", { name: "Permanently delete" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("option", { name: target.name })).toHaveCount(0);
+  await expect(page.getByLabel("Project", { exact: true })).toHaveValue(keep.id);
+  await expect(owner("issue.get", { issueId: first.id })).rejects.toThrow("Issue not found");
+  await expect(apiClient(endpoint, token)("project.get", { projectId: target.id })).rejects.toThrow();
+  expect((await owner("project.get", { projectId: keep.id })).id).toBe(keep.id);
+});

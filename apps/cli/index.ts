@@ -1,6 +1,7 @@
 import { readFileSync, existsSync, writeFileSync, realpathSync } from "node:fs";
 import { join, basename, resolve, relative, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { parseArgs } from "node:util";
 import { validInput } from "../../packages/contracts/validation";
@@ -8,6 +9,7 @@ import {
   entries,
   commandName,
   product,
+  workspaceAgentProfile,
   type Operation,
 } from "../../packages/contracts";
 import { apiClient, ApiError } from "../../packages/client";
@@ -39,7 +41,7 @@ const invalid = (message: string) =>
     retryable: false,
   });
 const tokenFile = () => join(dataDirectory(), "owner.token");
-async function connection(profile?: string) {
+async function connection(profile?: string, agentSession?: string) {
   try {
     if (profile && !/^[a-zA-Z0-9_-]+$/.test(profile))
       throw invalid("Invalid credential profile name.");
@@ -50,7 +52,7 @@ async function connection(profile?: string) {
           "utf8",
         )
       : (process.env.KORDLET_TOKEN ?? readFileSync(tokenFile(), "utf8"));
-    return { runtime, token, call: apiClient(runtime.endpoint, token) };
+    return { runtime, token, call: apiClient(runtime.endpoint, token, agentSession ?? process.env.KORDLET_AGENT_SESSION) };
   } catch (error) {
     if (error instanceof ApiError) throw error;
     throw new ApiError({
@@ -125,7 +127,12 @@ async function main() {
     return;
   }
   if (first === "mcp") {
-    await runMcp(async () => (await connection(values.profile)).call);
+    const profile = values.profile ??
+      (process.env.KORDLET_TOKEN ? undefined : workspaceAgentProfile);
+    const session = profile === workspaceAgentProfile
+      ? process.env.KORDLET_AGENT_SESSION ?? randomUUID()
+      : undefined;
+    await runMcp(async () => (await connection(profile, session)).call);
     return;
   }
   if (first === "open") {

@@ -2,8 +2,11 @@ import { build } from "esbuild";
 import { build as vite } from "vite";
 import { cp, mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-const target = process.argv[2] ?? "all";
-const included = (...targets) => target === "all" || targets.includes(target);
+const requested = process.argv.slice(2);
+const included = (...targets) =>
+  requested.length === 0 ||
+  requested.includes("all") ||
+  targets.some((target) => requested.includes(target));
 const server = (entry, outfile, options = {}) =>
   build({
     entryPoints: [entry],

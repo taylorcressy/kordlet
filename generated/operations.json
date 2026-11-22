@@ -1,6 +1,6 @@
 {
   "contract": "1",
-  "hash": "fd654eadb92d90e8b2a5c090da3a968dea31774bc5c2f79f26c851250761e1f0",
+  "hash": "688be7173f86210d4d3543b3151d5836e5572bfd802b8a3f7f2cc5467fa516f6",
   "operations": [
     {
       "id": "project.create",
@@ -77,7 +77,7 @@
           }
         }
       },
-      "role": "owner",
+      "role": "project-creator",
       "error": {
         "additionalProperties": false,
         "type": "object",
@@ -3130,6 +3130,12 @@
             "minimum": 0,
             "maximum": 9007199254740991,
             "type": "integer"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "review_feedback"
+            ]
           }
         }
       },
@@ -3788,7 +3794,7 @@
           }
         }
       },
-      "role": "reviewer",
+      "role": "review-decider",
       "error": {
         "additionalProperties": false,
         "type": "object",

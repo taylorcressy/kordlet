@@ -5,7 +5,7 @@ import SQLite from "better-sqlite3";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { entries, product, type Actor, type Operation } from "../contracts";
+import { entries, product, workspaceAgentProfile, type Actor, type Operation } from "../contracts";
 import { DomainError, hash, openStore } from "./store";
 import { atomicWrite, canonicalDirectory, type Runtime } from "./paths";
 
@@ -50,6 +50,7 @@ export async function startService(options: {
   };
   const files = join(dir, "runtime.json");
   const ownerFile = join(dir, "owner.token");
+  const agentFile = join(dir, "profile-" + workspaceAgentProfile + ".token");
   const streams = new Set<import("node:http").ServerResponse>();
   const sessions = new Map<string, number>();
   const launches = new Map<string, number>();
@@ -73,12 +74,14 @@ export async function startService(options: {
     value?.match(/(?:^|;\s*)kordlet_session=([a-f0-9-]{36})(?:;|$)/)?.[1];
   try {
     store = openStore(join(dir, "workspace.sqlite"));
-    if (!existsSync(ownerFile))
-      writeFileSync(ownerFile, randomUUID() + randomUUID(), {
-        mode: 0o600,
-        flag: "wx",
-      });
+    for (const file of [ownerFile, agentFile]) {
+      if (!existsSync(file)) {
+        writeFileSync(file, randomUUID() + randomUUID(), { mode: 0o600, flag: "wx" });
+      }
+    }
     const ownerToken = readFileSync(ownerFile, "utf8");
+    const agentToken = readFileSync(agentFile, "utf8");
+    const workspaceAgent: Actor = { id: workspaceAgentProfile, kind: "agent" };
     const data = store;
     app.addHook("onRequest", async (request, reply) => {
       if (
@@ -103,12 +106,25 @@ export async function startService(options: {
         );
     });
     const authenticate = (
-      headers: { authorization?: string; cookie?: string; origin?: string },
+      headers: {
+        authorization?: string;
+        cookie?: string;
+        origin?: string;
+        "kordlet-agent-session"?: string | string[];
+      },
       mutation: boolean,
-    ) => {
+    ): Actor | undefined => {
       const token = headers.authorization?.match(/^Bearer (.+)$/)?.[1];
-      if (token)
-        return equal(ownerToken, token) ? owner : data.authenticate(token);
+      if (token) {
+        if (equal(ownerToken, token)) return owner;
+        if (equal(agentToken, token)) {
+          const session = headers["kordlet-agent-session"];
+          if (session === undefined) return workspaceAgent;
+          if (typeof session !== "string" || !/^[a-f0-9-]{36}$/.test(session)) return;
+          return { ...workspaceAgent, id: "agent:" + hash(session), peerReview: true };
+        }
+        return data.authenticate(token);
+      }
       const session = cookies(headers.cookie);
       if (
         session &&
@@ -188,6 +204,22 @@ export async function startService(options: {
             "; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400",
         )
         .send({ ok: true });
+    });
+    app.post("/session/projects/:projectId/delete", async (request, reply) => {
+      const actor = !request.headers.authorization && authenticate(request.headers, true);
+      if (!actor || actor.kind !== "owner")
+        throw new DomainError("permission_denied", "An owner browser session is required.", 403);
+      const { projectId } = request.params as { projectId: string };
+      const body = request.body as { expectedRevision?: unknown; confirmation?: unknown } | undefined;
+      if (
+        !projectId || projectId.length > 100 ||
+        typeof body?.confirmation !== "string" || body.confirmation.length > 240 ||
+        typeof body.expectedRevision !== "number" ||
+        !Number.isSafeInteger(body.expectedRevision) || body.expectedRevision < 0
+      )
+        throw new DomainError("invalid_input", "Invalid project deletion confirmation.", 400);
+      data.deleteProject(projectId, body.expectedRevision, body.confirmation, actor);
+      return reply.code(204).send();
     });
     for (const [operation, meta] of entries) {
       const input = ajv.compile(meta.input);
@@ -310,9 +342,8 @@ export async function startService(options: {
         cursor?: string;
       };
       if (
-        typeof projectId !== "string" ||
-        !projectId ||
-        projectId.length > 100 ||
+        (projectId !== undefined &&
+          (typeof projectId !== "string" || !projectId || projectId.length > 100)) ||
         (initial !== undefined &&
           (typeof initial !== "string" || !/^\d+$/.test(initial)))
       )

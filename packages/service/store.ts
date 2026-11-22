@@ -3,6 +3,8 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   operations,
   type Actor,
+  projectDiscoveryInstructions,
+  reviewInstructions,
   type Input,
   type Issue,
   type Operation,
@@ -618,7 +620,8 @@ export function openStore(filename: string) {
     },
     "comment.add": (x, a) => {
       const i = issue(x.issueId, a);
-      if (a.kind === "agent") fence(i.id, a, x.generation);
+      if (a.kind === "agent" && !(x.kind === "review_feedback" && x.generation === undefined))
+        fence(i.id, a, x.generation);
       const c = {
         id: randomUUID(),
         issueId: i.id,
@@ -679,6 +682,12 @@ export function openStore(filename: string) {
       return r;
     },
     "review.decide": (x, a) => {
+      requireThat(
+        a.kind !== "agent" || x.decision === "changes",
+        "permission_denied",
+        "Local peer review can request changes. Approval requires the owner or a reviewer credential.",
+        403,
+      );
       const r = read<Review>("SELECT data FROM reviews WHERE id=?", x.reviewId);
       requireThat(r, "not_found", "Submission not found.", 404);
       const i = issue(r.issueId, a);
@@ -945,7 +954,7 @@ export function openStore(filename: string) {
     },
     "workspace.instructions": () => ({
       workflow:
-        "Resolve the project. Read issue context and acceptance criteria. Claim ready work, report progress using your current claim generation, and submit checks and references. A human reviewer decides the outcome.",
+        projectDiscoveryInstructions + " " + reviewInstructions + " Read issue context and acceptance criteria. Claim ready work, report progress using your current claim generation, and submit checks and references. A human reviewer decides the outcome.",
     }),
   };
   function decide(
@@ -982,7 +991,12 @@ export function openStore(filename: string) {
     requireThat(
       meta.role === "any" ||
         meta.role === actor.kind ||
-        (meta.role === "reviewer" && actor.kind === "owner"),
+        (meta.role === "project-creator" &&
+          (actor.kind === "owner" || (actor.kind === "agent" && !actor.projectId))) ||
+        (meta.role === "reviewer" && actor.kind === "owner") ||
+        (meta.role === "review-decider" &&
+          (actor.kind === "owner" || actor.kind === "reviewer" ||
+            (actor.kind === "agent" && (actor.peerReview === true || !!actor.projectId)))),
       "permission_denied",
       "Credential does not allow this operation.",
       403,
@@ -1089,9 +1103,45 @@ export function openStore(filename: string) {
       })
       .immediate();
   }
+  const deleteProject = db.transaction(
+    (projectId: string, expectedRevision: number, confirmation: string, actor: Actor) => {
+      requireThat(actor.kind === "owner", "permission_denied", "Owner required.", 403);
+      const current = project(projectId, actor);
+      revision(expectedRevision, current.revision);
+      requireThat(
+        confirmation === current.name,
+        "invalid_input",
+        "Enter the exact project name to delete it.",
+        400,
+      );
+      const projectIssues = "SELECT id FROM issues WHERE project_id=?";
+      run(
+        `DELETE FROM dependencies WHERE issue_id IN (${projectIssues}) OR requires_id IN (${projectIssues})`,
+        projectId,
+        projectId,
+      );
+      for (const table of ["claims", "comments", "reviews"]) {
+        run(`DELETE FROM ${table} WHERE issue_id IN (${projectIssues})`, projectId);
+      }
+      run("DELETE FROM issues WHERE project_id=?", projectId);
+      run("DELETE FROM credentials WHERE project_id=?", projectId);
+      run("DELETE FROM events WHERE project_id=?", projectId);
+      run(
+        `DELETE FROM requests WHERE scope=?
+          OR (operation='project.create' AND json_extract(result,'$.id')=?)
+          OR (operation='project.import' AND json_extract(result,'$.project.id')=?)`,
+        projectId,
+        projectId,
+        projectId,
+      );
+      run("DELETE FROM projects WHERE id=?", projectId);
+      audit(actor, "project.delete", projectId, null, {});
+    },
+  ).immediate;
   return {
     db,
     execute,
+    deleteProject,
     authenticate(token: string): Actor | undefined {
       const credential = read<Credential>(
         "SELECT data FROM credentials WHERE hash=?",

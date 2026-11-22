@@ -174,7 +174,7 @@ function op<I extends Record<string, TSchema>, O extends TSchema>(
   path: string,
   input: I,
   output: O,
-  role: "any" | "owner" | "agent" | "reviewer" = "any",
+  role: "any" | "owner" | "agent" | "reviewer" | "project-creator" | "review-decider" = "any",
 ) {
   return {
     method,
@@ -191,6 +191,14 @@ const issueId = { issueId: id };
 const projectId = { projectId: id };
 const revision = { expectedRevision: num };
 const fence = { generation: num };
+export const workspaceAgentProfile = "workspace-agent";
+export const projectDiscoveryInstructions =
+  "List existing projects using project_list and match the repository path to the current checkout, or read its .kordlet-project.json if present. Use project_get to verify a selected project. If no project matches and the user wants to start tracking this repository, use project_create with its path, name, and a unique issue key prefix. If the match is ambiguous, ask which project to use. Use the returned project ID for subsequent calls.";
+
+export const reviewInstructions =
+  "When asked to review, fetch issue_context and keep the implementer's claim in place. Post findings with comment_add using kind review_feedback, even before a submission exists. Progress comments still require the active claim and generation. If a pending submission from another session exists, use review_decide with changes when asked to request changes. Leave approval to the owner or an explicitly authorized reviewer. If no submission exists, leave findings as a comment and ask the implementer to submit.";
+
+
 export const operations = {
   "project.create": op(
     "POST",
@@ -201,7 +209,7 @@ export const operations = {
       repository: opt(str(4096)),
     },
     project,
-    "owner",
+    "project-creator",
   ),
   "project.list": op("GET", "/projects", pagination, page(project)),
   "project.get": op("GET", projectPath, projectId, project),
@@ -330,6 +338,7 @@ export const operations = {
       ...issueId,
       body: T.String({ minLength: 1, maxLength: 32000 }),
       generation: opt(num),
+      kind: opt(choices("review_feedback")),
     },
     comment,
   ),
@@ -354,7 +363,7 @@ export const operations = {
       reason: fields.title,
     },
     review,
-    "reviewer",
+    "review-decider",
   ),
   "review.list": op(
     "GET",
@@ -447,6 +456,7 @@ export type Actor = {
   id: string;
   kind: "owner" | "agent" | "reviewer";
   projectId?: string;
+  peerReview?: true;
 };
 export const entries = Object.entries(operations) as [
   Operation,

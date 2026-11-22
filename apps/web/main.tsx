@@ -80,8 +80,9 @@ function App() {
     localStorage.getItem("kordlet-theme") === "light",
   );
   const [modal, setModal] = useState<
-    "issue" | "project" | "edit" | "project-edit" | null
+    "issue" | "project" | "edit" | "project-edit" | "project-delete" | null
   >(null);
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [newStatus, setNewStatus] = useState<Issue["status"]>("Backlog");
   const [filters, setFilters] = useState(false);
   const [token, setToken] = useState("");
@@ -147,7 +148,9 @@ function App() {
         setProjects(result.items);
         setProject(
           (current) =>
-            current || result.items.find((p) => !p.archived)?.id || "",
+            result.items.some((item) => item.id === current)
+              ? current
+              : result.items.find((item) => !item.archived)?.id || "",
         );
         setOnline(navigator.onLine);
       })
@@ -263,18 +266,23 @@ function App() {
     };
   }, []);
   useEffect(() => {
-    if (!projectId) return;
-    const stream = new EventSource(
-      "/stream?" + new URLSearchParams({ projectId }),
-    );
-    stream.onopen = () => {
-      setOnline(navigator.onLine);
-      reload((x) => x + 1);
+    let active = true;
+    let stream: EventSource | undefined;
+    void boot.current?.then(() => {
+      if (!active) return;
+      stream = new EventSource("/stream");
+      stream.onopen = () => {
+        setOnline(navigator.onLine);
+        reload((x) => x + 1);
+      };
+      stream.onmessage = () => reload((x) => x + 1);
+      stream.onerror = () => setOnline(false);
+    }).catch(report);
+    return () => {
+      active = false;
+      stream?.close();
     };
-    stream.onmessage = () => reload((x) => x + 1);
-    stream.onerror = () => setOnline(false);
-    return () => stream.close();
-  }, [projectId, report]);
+  }, [report]);
   useEffect(() => {
     if (modal && !dialog.current?.open) dialog.current?.showModal();
     if (!modal && dialog.current?.open) dialog.current?.close();
@@ -338,7 +346,20 @@ function App() {
     const form = new FormData(event.currentTarget);
     const str = (key: string) => String(form.get(key) ?? "");
     await update(async () => {
-      if (modal === "project-edit" && project) {
+      if (modal === "project-delete") {
+        if (!projectToDelete) return;
+        const response = await fetch("/session/projects/" + encodeURIComponent(projectToDelete.id) + "/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            expectedRevision: projectToDelete.revision,
+            confirmation: str("confirmation"),
+          }),
+        });
+        if (!response.ok) throw new ApiError(await response.json());
+        changeProject("");
+        setView("Projects");
+      } else if (modal === "project-edit" && project) {
         await call("project.update", {
           projectId: project.id,
           expectedRevision: project.revision,
@@ -886,7 +907,9 @@ function App() {
                     ? "Edit issue"
                     : modal === "project-edit"
                       ? "Edit project"
-                      : "New issue"}
+                      : modal === "project-delete"
+                        ? "Delete project"
+                        : "New issue"}
               </h2>
               <button
                 type="button"
@@ -897,7 +920,15 @@ function App() {
                 <X size={20} />
               </button>
             </div>
-            {modal === "project" || modal === "project-edit" ? (
+            {modal === "project-delete" && projectToDelete ? (
+              <>
+                <p>Permanently delete <strong>{projectToDelete.name}</strong> and its Kordlet data, including issues, reviews, comments, and project credentials.</p>
+                <label className="field">
+                  Type the project name
+                  <input name="confirmation" autoFocus required maxLength={240} autoComplete="off" />
+                </label>
+              </>
+            ) : modal === "project" || modal === "project-edit" ? (
               <>
                 <label className="field">
                   Name
@@ -958,11 +989,19 @@ function App() {
               </p>
             )}
             <div className="actions">
+              {modal === "project-edit" && (
+                <button type="button" className="danger" disabled={!project || !online || busy} onClick={() => {
+                  setProjectToDelete(project ?? null);
+                  setModal("project-delete");
+                }}>
+                  Delete project…
+                </button>
+              )}
               <button type="button" onClick={closeEditor}>
                 Cancel
               </button>
-              <button className="primary" disabled={!online || busy}>
-                {modal === "edit" || modal === "project-edit"
+              <button className={modal === "project-delete" ? "danger" : "primary"} disabled={!online || busy}>
+                {modal === "project-delete" ? "Permanently delete" : modal === "edit" || modal === "project-edit"
                   ? "Save changes"
                   : modal === "project"
                     ? "Create project"

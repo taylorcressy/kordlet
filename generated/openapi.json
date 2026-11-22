@@ -21,7 +21,7 @@
     "/api/v1/projects": {
       "post": {
         "operationId": "project.create",
-        "summary": "project.create (owner)",
+        "summary": "project.create (project-creator)",
         "security": [
           {
             "bearerAuth": []
@@ -3885,6 +3885,12 @@
                     "minimum": 0,
                     "maximum": 9007199254740991,
                     "type": "integer"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "review_feedback"
+                    ]
                   }
                 },
                 "required": [
@@ -4449,7 +4455,7 @@
     "/api/v1/reviews/{reviewId}/decisions": {
       "post": {
         "operationId": "review.decide",
-        "summary": "review.decide (reviewer)",
+        "summary": "review.decide (review-decider)",
         "security": [
           {
             "bearerAuth": []

@@ -4,7 +4,7 @@ Generated from the canonical registry.
 
 | Operation | REST | CLI | MCP | Role |
 |---|---|---|---|---|
-| `project.create` | `POST /api/v1/projects` | `kordlet project create` | `project_create` | owner |
+| `project.create` | `POST /api/v1/projects` | `kordlet project create` | `project_create` | project-creator |
 | `project.list` | `GET /api/v1/projects` | `kordlet project list` | `project_list` | any |
 | `project.get` | `GET /api/v1/projects/:projectId` | `kordlet project get` | `project_get` | any |
 | `project.update` | `PATCH /api/v1/projects/:projectId` | `kordlet project update` | `project_update` | owner |
@@ -25,7 +25,7 @@ Generated from the canonical registry.
 | `comment.add` | `POST /api/v1/issues/:issueId/comments` | `kordlet comment add` | `comment_add` | any |
 | `comment.list` | `GET /api/v1/issues/:issueId/comments` | `kordlet comment list` | `comment_list` | any |
 | `review.submit` | `POST /api/v1/issues/:issueId/reviews` | `kordlet review submit` | `review_submit` | any |
-| `review.decide` | `POST /api/v1/reviews/:reviewId/decisions` | `kordlet review decide` | `review_decide` | reviewer |
+| `review.decide` | `POST /api/v1/reviews/:reviewId/decisions` | `kordlet review decide` | `review_decide` | review-decider |
 | `review.list` | `GET /api/v1/reviews` | `kordlet review list` | `review_list` | any |
 | `issue.context` | `GET /api/v1/issues/:issueId/context` | `kordlet issue context` | `issue_context` | any |
 | `event.list` | `GET /api/v1/events` | `kordlet event list` | `event_list` | any |

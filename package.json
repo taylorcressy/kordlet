@@ -6,6 +6,8 @@
   "scripts": {
     "dev:web": "node scripts/build.mjs web && node dist/server.mjs",
     "dev:desktop": "node scripts/desktop.mjs dev",
+    "install:local": "node scripts/build.mjs web && node scripts/install-local.mjs",
+    "uninstall:local": "node scripts/install-local.mjs remove",
     "build:web": "node scripts/build.mjs web",
     "build:desktop": "node scripts/build.mjs desktop",
     "build:cli": "node scripts/build.mjs cli",

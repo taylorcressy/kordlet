@@ -23,7 +23,25 @@ Use the same `@file.json` invocation in PowerShell. Pass `--input -` to read JSO
 
 MCP uses the TypeScript SDK over stdio. The [operation inventory](api-reference.md) lists tool names and allowed roles. Result envelopes contain `result` on success or `error` with MCP `isError` on failure. SDK clients can submit an idempotency key under request `_meta["kordlet.dev/idempotencyKey"]`. Tool inputs are strict JSON objects.
 
-### Agent setup
+### Review with a second local agent
+
+Use the same workspace MCP registration for both agents. Each MCP process assigns its own identity automatically. The review agent can post findings with `comment_add` and `kind: "review_feedback"` before a submission exists. Once the implementer submits, the second agent can request changes. Approval stays with the owner or an explicitly authorized reviewer.
+
+The identity lasts for the MCP process. If it exits while holding a claim, ask the owner to release the claim before reclaiming the work. A caller that needs a stable identity can keep a private UUID in `KORDLET_AGENT_SESSION` and use it with `--profile workspace-agent`. Use a distinct value per agent.
+
+### Register once for all projects
+
+Keep Kordlet running and configure each local coding client once at user scope. These commands assume the installed `kordlet` is on the client's PATH.
+
+```sh
+codex mcp add kordlet -- kordlet mcp --profile workspace-agent
+claude mcp add --scope user kordlet -- kordlet mcp --profile workspace-agent
+grok mcp add kordlet -- kordlet mcp --profile workspace-agent
+```
+
+Ask the agent to use Kordlet for the current repository. It lists projects, matches the repository path, and can create the project if asked. The built-in workspace agent profile can read and work across projects and create projects. It cannot mint credentials, approve reviews, or mark work complete. Keep project-scoped bootstrap for clients that should only see one project.
+
+### Project-scoped agent setup
 
 From a project root, run `kordlet init KOR` to create a project and marker if needed. Run one of these commands to install project-scoped skills and a protected agent profile.
 
@@ -38,3 +56,7 @@ Codex uses `.agents/skills` plus a managed block in `.codex/config.toml`. Claude
 Run `--dry-run` to inspect planned file changes or `--remove` to remove unchanged managed entries for the selected tool. Removal preserves the profile for other installations. Revoke it explicitly in Agents when it is obsolete. If interrupted, inspect the journal under `.kordlet`, restore the before values or finish the after values, then remove the journal and retry. Bootstrap rejects managed files edited after installation.
 
 Agents should resolve the project explicitly, read context, claim Ready work, report meaningful progress, and submit evidence using the current revision and generation. The five bundled skills cover planning, work, review, handoff, and triage. Scope errors are enforced by the service even when a client supplies a different project ID.
+
+### Delete a project
+
+Select the project, then open **Settings → Edit project → Delete project** and type its exact name. This permanently removes the project and its Kordlet records, including project credentials. The linked repository and its files remain on disk. Use Archive if you want to keep the project's history.

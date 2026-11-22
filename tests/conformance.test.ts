@@ -64,6 +64,7 @@ test("actual adapter inventories match the canonical registry", async () => {
     "GET /health",
     "POST /session/launch",
     "POST /session",
+    "POST /session/projects/:projectId/delete",
     "GET /stream",
   ];
   expect([...service.routes].sort()).toEqual(
@@ -648,4 +649,87 @@ test("backup and restore preserve persistent records and reject newer schema", a
   service = await startService({ mode: "headless" });
   call = apiClient(service.runtime.endpoint, ownerToken);
   expect(await call("project.get", { projectId: p.id })).toEqual(p);
+});
+
+test("workspace MCP discovers and creates projects without an owner or project profile", async () => {
+  const client = new Client({ name: "workspace-agent-test", version: "1" });
+  const { KORDLET_TOKEN: _, ...env } = cliEnv;
+  await client.connect(new StdioClientTransport({
+    command: process.execPath,
+    args: [cliPath, "mcp"],
+    env: env as Record<string, string>,
+  }));
+  try {
+    expect(client.getInstructions()).toContain("project_list");
+    expect(client.getInstructions()).toContain("review_feedback");
+    const created = await client.callTool({
+      name: "project_create",
+      arguments: { name: "Workspace agent", prefix: "WORKSPACE", repository: dir },
+    });
+    expect(created.isError).toBe(false);
+    const { result: project } = created.structuredContent as { result: Output<"project.create"> };
+    const listed = await client.callTool({ name: "project_list", arguments: {} });
+    expect(listed.structuredContent).toMatchObject({ result: { items: expect.arrayContaining([project]) } });
+    const denied = await client.callTool({
+      name: "credential_create",
+      arguments: { projectId: project.id, kind: "reviewer" },
+    });
+    expect(denied.structuredContent).toMatchObject({ error: { code: "permission_denied" } });
+    const issue = await call("issue.create", { projectId: project.id, title: "Owner approval only" });
+    const completion = await client.callTool({
+      name: "issue_complete",
+      arguments: { issueId: issue.id, expectedRevision: issue.revision },
+    });
+    expect(completion.structuredContent).toMatchObject({ error: { code: "permission_denied" } });
+  } finally {
+    await client.close();
+  }
+});
+
+test("local MCP sessions can review each other without manually issued credentials", async () => {
+  const worker = new Client({ name: "local-worker", version: "1" });
+  const reviewer = new Client({ name: "local-peer", version: "1" });
+  const { KORDLET_TOKEN: _, KORDLET_AGENT_SESSION: __, ...env } = cliEnv;
+  try {
+    for (const client of [worker, reviewer]) {
+      await client.connect(new StdioClientTransport({
+        command: process.execPath,
+        args: [cliPath, "mcp", "--profile", "workspace-agent"],
+        env: env as Record<string, string>,
+      }));
+    }
+    const project = await call("project.create", { name: "Peer review", prefix: "PEER" });
+    const draft = await call("issue.create", { projectId: project.id, title: "Two agents" });
+    const ready = await call("issue.transition", { issueId: draft.id, expectedRevision: draft.revision, status: "Ready" });
+    const claimed = await worker.callTool({ name: "issue_claim", arguments: { issueId: ready.id } });
+    expect(claimed.isError).toBe(false);
+    const { result: claim } = claimed.structuredContent as { result: Output<"issue.claim"> };
+    const progress = await reviewer.callTool({ name: "comment_add", arguments: { issueId: ready.id, body: "Progress" } });
+    expect(progress.isError).toBe(true);
+    const feedback = await reviewer.callTool({ name: "comment_add", arguments: { issueId: ready.id, kind: "review_feedback", body: "Check the cutoff." } });
+    expect(feedback.isError).toBe(false);
+    const { result: comment } = feedback.structuredContent as { result: Output<"comment.add"> };
+    expect(comment.actor).not.toBe(claim.actor);
+    const issue = await call("issue.get", { issueId: ready.id });
+    const submitted = await worker.callTool({
+      name: "review_submit",
+      arguments: {
+        issueId: issue.id, expectedRevision: issue.revision, generation: claim.generation,
+        evidence: { summary: "Ready for inspection", criteria: [], checks: [], references: [], limitations: "" },
+      },
+    });
+    expect(submitted.isError).toBe(false);
+    const { result: review } = submitted.structuredContent as { result: Output<"review.submit"> };
+    const decide = (client: Client, decision: "changes" | "approve") => client.callTool({
+      name: "review_decide", arguments: { reviewId: review.id, decision, reason: "Check the cutoff." },
+    });
+    expect((await decide(worker, "changes")).isError).toBe(true);
+    expect((await decide(reviewer, "approve")).isError).toBe(true);
+    expect((await decide(reviewer, "changes")).isError).toBe(false);
+    const context = await call("issue.context", { issueId: issue.id });
+    expect(context.issue.status).toBe("In progress");
+    expect(context.claim).toMatchObject({ id: claim.id, actor: claim.actor });
+  } finally {
+    await Promise.all([worker.close(), reviewer.close()]);
+  }
 });

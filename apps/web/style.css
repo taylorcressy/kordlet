@@ -952,3 +952,12 @@ dialog::backdrop {
 .checkbox input {
   accent-color: var(--primary);
 }
+
+button.danger {
+  border-color: #dc686b;
+  color: var(--text);
+}
+button.danger:hover:not(:disabled) {
+  background: #9c2d39;
+  color: white;
+}

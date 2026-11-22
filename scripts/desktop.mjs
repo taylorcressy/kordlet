@@ -18,7 +18,8 @@ function run(command, args, cwd = root) {
     );
   });
 }
-await run(process.execPath, ["scripts/build.mjs", "desktop"]);
+const targets = mode === "dev" ? ["desktop", "mcp"] : ["desktop"];
+await run(process.execPath, ["scripts/build.mjs", ...targets]);
 await mkdir(resolve(stage, "dist"), { recursive: true });
 await writeFile(
   resolve(stage, "package.json"),
@@ -39,14 +40,8 @@ await run(
 const builder = resolve("node_modules/electron-builder/cli.js");
 const config = resolve("electron-builder.yml");
 if (mode === "dev") {
-  await run(process.execPath, [
-    builder,
-    "install-app-deps",
-    "--projectDir",
-    stage,
-    "--config",
-    config,
-  ]);
+  // install-app-deps uses its working directory as the project directory.
+  await run(process.execPath, [builder, "install-app-deps"], stage);
   await run(electron, [stage]);
 } else {
   await run(process.execPath, [

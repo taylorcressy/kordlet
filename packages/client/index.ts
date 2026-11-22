@@ -17,7 +17,7 @@ export class ApiError extends Error {
     super(failure.message);
   }
 }
-export function apiClient(endpoint = "", token?: string) {
+export function apiClient(endpoint = "", token?: string, agentSession?: string) {
   return async <K extends Operation>(
     operation: K,
     input: Input<K>,
@@ -63,6 +63,7 @@ export function apiClient(endpoint = "", token?: string) {
           method: meta.method,
           headers: {
             "Kordlet-Contract": product.contract,
+            ...(agentSession ? { "Kordlet-Agent-Session": agentSession } : {}),
             ...(token ? { Authorization: "Bearer " + token } : {}),
             ...(key !== undefined ? { "Idempotency-Key": key } : {}),
             ...(meta.method === "GET"

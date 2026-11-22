@@ -9,6 +9,8 @@ import {
   entries,
   errorSchema,
   product,
+  projectDiscoveryInstructions,
+  reviewInstructions,
   toolName,
 } from "../../packages/contracts";
 import { ApiError, type apiClient } from "../../packages/client";
@@ -33,7 +35,7 @@ export async function runMcp(
 ) {
   const server = new Server(
     { name: product.cli, version: product.version },
-    { capabilities: { tools: {} } },
+    { capabilities: { tools: {} }, instructions: projectDiscoveryInstructions + " " + reviewInstructions },
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
